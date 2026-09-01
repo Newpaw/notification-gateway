@@ -98,15 +98,38 @@ async def test_oauth_authorization_and_token_rotation(
     assert await oauth_provider.load_access_token(rotated.access_token) is None
 
 
-async def test_oauth_rejects_untrusted_clients_and_requests(
+async def test_oauth_supports_standard_clients_and_rejects_unsafe_redirects(
     oauth_provider: SelfHostedOAuthProvider,
     oauth_client: OAuthClientInformationFull,
 ) -> None:
-    invalid_client = oauth_client.model_copy(
-        update={"redirect_uris": [AnyUrl("https://evil.example/callback")]}
-    )
+    for redirect_uri in (
+        "https://mcp-client.example/callback",
+        "http://localhost:6274/oauth/callback",
+        "http://127.0.0.1:49152/oauth/callback",
+        "http://[::1]:6276/oauth/callback",
+    ):
+        client = oauth_client.model_copy(
+            update={
+                "client_id": f"client-{redirect_uri}",
+                "redirect_uris": [AnyUrl(redirect_uri)],
+            }
+        )
+        await oauth_provider.register_client(client)
+        assert await oauth_provider.get_client(client.client_id) == client
+
+    for redirect_uri in (
+        "http://mcp-client.example/callback",
+        "https://mcp-client.example/callback#fragment",
+        "https://user:password@mcp-client.example/callback",
+        "custom-scheme://callback",
+    ):
+        invalid_client = oauth_client.model_copy(update={"redirect_uris": [AnyUrl(redirect_uri)]})
+        with pytest.raises(RegistrationError):
+            await oauth_provider.register_client(invalid_client)
+
+    missing_redirect = oauth_client.model_copy(update={"redirect_uris": []})
     with pytest.raises(RegistrationError):
-        await oauth_provider.register_client(invalid_client)
+        await oauth_provider.register_client(missing_redirect)
 
     with pytest.raises(AuthorizeError):
         await oauth_provider.authorize(
@@ -145,8 +168,10 @@ async def test_login_route_renders_and_rejects_expired_transaction(
     }
     response = await oauth_provider.login_route(Request(scope))
     assert response.status_code == 200
-    assert b"Authorize ChatGPT" in response.body
-    assert "https://chatgpt.com" in response.headers["content-security-policy"]
+    assert b"Authorize MCP client" in response.body
+    assert b"chatgpt-client" in response.body
+    assert b"https://chatgpt.com/connector_platform_oauth_redirect" in response.body
+    assert response.headers["content-security-policy"].endswith("form-action 'self'")
 
     expired_scope = {**scope, "query_string": b"transaction=expired"}
     expired = await oauth_provider.login_route(Request(expired_scope))

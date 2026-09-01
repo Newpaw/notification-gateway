@@ -1,6 +1,6 @@
 # Notification Gateway
 
-A small, security-focused Python gateway that lets ChatGPT and automation tools send push
+A small, security-focused Python gateway that lets MCP clients and automation tools send push
 notifications through a self-hosted [ntfy](https://ntfy.sh/) server.
 
 ## Interfaces
@@ -90,9 +90,10 @@ Set these secrets in Komodo, never in the compose file:
 
 The initial safe deployment uses `MCP_ENABLED=false`. REST and health checks work immediately.
 
-## Enable ChatGPT MCP
+## Enable MCP clients
 
-For a personal ChatGPT connector, enable the bundled authorization server:
+For personal MCP clients, including ChatGPT and MCP Inspector, enable the bundled authorization
+server:
 
 ```dotenv
 PUBLIC_BASE_URL=https://notify.novopacky.com
@@ -109,13 +110,17 @@ Then create a custom connector in ChatGPT developer mode:
 - MCP server URL: `https://notify.novopacky.com/mcp`
 - Authentication: `OAuth`
 
-ChatGPT discovers the authorization and registration endpoints automatically. During connection,
+Standards-compliant MCP clients discover the authorization and registration endpoints
+automatically. During connection,
 the gateway displays its own login page; enter `OAUTH_LOGIN_PASSWORD` there. The password is only
 used to approve new OAuth sessions. Tokens and authorization codes are stored in SQLite as hashes,
 access tokens expire after 15 minutes, refresh tokens rotate, and five failed login attempts lock
 that authorization request.
 
-Dynamic client registration is intentionally restricted to HTTPS callback URLs on `chatgpt.com`.
+Dynamic client registration accepts callback URLs for any HTTPS client and HTTP callback URLs on
+loopback hosts (`localhost`, `127.0.0.0/8`, and `::1`). Other HTTP URLs, URI fragments, embedded
+userinfo, and non-HTTP schemes are rejected. Authorization codes remain bound to the registered
+client and callback URL, and PKCE S256 protects the code exchange.
 The MCP scheduler always publishes through `DEFAULT_CHANNEL`; the caller cannot supply a channel.
 The production personal mapping is `personal` to `jan-personal`.
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import html
+import ipaddress
 import json
 import secrets
 import time
@@ -106,15 +107,35 @@ class SelfHostedOAuthProvider(
             ).fetchone()
         return OAuthClientInformationFull.model_validate_json(row[0]) if row else None
 
+    @staticmethod
+    def _is_allowed_redirect_uri(uri: AnyUrl) -> bool:
+        parsed = urlparse(str(uri))
+        if not parsed.hostname or parsed.fragment or parsed.username or parsed.password:
+            return False
+        if parsed.scheme == "https":
+            return True
+        if parsed.scheme != "http":
+            return False
+
+        hostname = parsed.hostname.lower()
+        if hostname == "localhost":
+            return True
+        try:
+            return ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            return False
+
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
         redirect_uris = client_info.redirect_uris or []
         if not redirect_uris or any(
-            urlparse(str(uri)).scheme != "https" or urlparse(str(uri)).hostname != "chatgpt.com"
-            for uri in redirect_uris
+            not self._is_allowed_redirect_uri(uri) for uri in redirect_uris
         ):
             raise RegistrationError(
                 error="invalid_redirect_uri",
-                error_description="Only HTTPS redirect URIs on chatgpt.com are allowed",
+                error_description=(
+                    "Redirect URIs must use HTTPS or HTTP on a loopback host; "
+                    "fragments and userinfo are not allowed"
+                ),
             )
         async with aiosqlite.connect(self.database_path) as db:
             await db.execute(
@@ -365,8 +386,12 @@ class SelfHostedOAuthProvider(
             except (PermissionError, ValueError) as exc:
                 error = str(exc)
 
-        if not transaction or await self._load_transaction(transaction) is None:
+        loaded = await self._load_transaction(transaction) if transaction else None
+        if loaded is None:
             return HTMLResponse("Authorization request expired", status_code=400)
+        transaction_data, _ = loaded
+        client_id = html.escape(str(transaction_data["client_id"]))
+        redirect_uri = html.escape(str(transaction_data["redirect_uri"]))
         error_html = f'<p class="error">{html.escape(error)}</p>' if error else ""
         page = f"""<!doctype html>
 <html><head><meta charset="utf-8">
@@ -382,7 +407,8 @@ border-radius:9px;border:1px solid #394254}}
 button{{background:#5b8cff;color:white;font-weight:700;cursor:pointer}}
 .error{{color:#ff8f8f}}
 </style></head><body><main><h1>Notification Gateway</h1>
-<p>Authorize ChatGPT to send notifications.</p>{error_html}
+<p>Authorize MCP client <code>{client_id}</code> to send notifications.</p>
+<p class="target">Callback: <code>{redirect_uri}</code></p>{error_html}
 <form method="post"><input type="hidden" name="transaction"
 value="{html.escape(transaction)}"><label>Password
 <input name="password" type="password" required autofocus
@@ -393,8 +419,7 @@ autocomplete="current-password"></label>
             headers={
                 "Cache-Control": "no-store",
                 "Content-Security-Policy": (
-                    "default-src 'none'; style-src 'unsafe-inline'; "
-                    "form-action 'self' https://chatgpt.com"
+                    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'"
                 ),
                 "X-Frame-Options": "DENY",
             },
