@@ -27,6 +27,7 @@ async def oauth_provider(tmp_path: Path) -> SelfHostedOAuthProvider:
         required_scopes=["notifications:write"],
     )
     await provider.initialize()
+    assert provider.issuer == "https://notify.novopacky.com/"
     return provider
 
 
@@ -73,7 +74,7 @@ async def test_oauth_authorization_and_token_rotation(
     )
     callback_query = parse_qs(urlparse(callback).query)
     assert callback_query["state"] == ["state-123"]
-    assert callback_query["iss"] == ["https://notify.novopacky.com"]
+    assert callback_query["iss"] == ["https://notify.novopacky.com/"]
 
     code_value = callback_query["code"][0]
     code = await oauth_provider.load_authorization_code(oauth_client, code_value)

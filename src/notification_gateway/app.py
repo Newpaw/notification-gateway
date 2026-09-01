@@ -46,15 +46,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.mcp_enabled:
         resource_url = f"{str(settings.public_base_url).rstrip('/')}/mcp"
         if settings.oauth_self_hosted:
+            issuer = f"{str(settings.public_base_url).rstrip('/')}/"
             oauth_provider = SelfHostedOAuthProvider(
                 database_path=settings.database_path,
-                issuer=str(settings.public_base_url).rstrip("/"),
+                issuer=issuer,
                 resource=resource_url,
                 login_password=settings.oauth_login_password,
                 required_scopes=settings.required_scopes,
             )
             verifier = None
-            issuer_url = AnyHttpUrl(str(settings.public_base_url).rstrip("/"))
+            issuer_url = AnyHttpUrl(issuer)
         else:
             verifier = OidcTokenVerifier(settings)
             issuer_url = AnyHttpUrl(str(settings.oauth_issuer))

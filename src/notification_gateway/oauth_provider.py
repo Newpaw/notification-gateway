@@ -51,7 +51,7 @@ class SelfHostedOAuthProvider(
         refresh_token_ttl: int = 2_592_000,
     ) -> None:
         self.database_path = database_path
-        self.issuer = issuer.rstrip("/")
+        self.issuer = f"{issuer.rstrip('/')}/"
         self.resource = resource
         self.login_password = login_password
         self.required_scopes = required_scopes
@@ -170,7 +170,7 @@ class SelfHostedOAuthProvider(
                 (self._hash(transaction), json.dumps(data), int(time.time()) + 600),
             )
             await db.commit()
-        return f"{self.issuer}/oauth/login?transaction={transaction}"
+        return f"{self.issuer}oauth/login?transaction={transaction}"
 
     async def _load_transaction(self, transaction: str) -> tuple[dict[str, object], int] | None:
         async with aiosqlite.connect(self.database_path) as db:

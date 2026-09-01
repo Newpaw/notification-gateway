@@ -55,6 +55,7 @@ def test_self_hosted_oauth_discovery(settings: Settings) -> None:
     assert protected.status_code == 200
     assert protected.json()["resource"] == "https://notify.example.test/mcp"
     assert authorization.status_code == 200
+    assert authorization.json()["issuer"] == "https://notify.example.test/"
     assert authorization.json()["registration_endpoint"].endswith("/register")
     assert authorization.json()["code_challenge_methods_supported"] == ["S256"]
     assert mcp.status_code == 401
@@ -111,7 +112,9 @@ def test_complete_oauth_and_authenticated_mcp_flow(settings: Settings) -> None:
             },
             follow_redirects=False,
         )
-        code = parse_qs(urlparse(login.headers["location"]).query)["code"][0]
+        login_query = parse_qs(urlparse(login.headers["location"]).query)
+        code = login_query["code"][0]
+        assert login_query["iss"] == ["https://notify.example.test/"]
         token = client.post(
             "/token",
             data={
