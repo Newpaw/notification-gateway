@@ -159,6 +159,7 @@ def test_complete_oauth_and_authenticated_mcp_flow(settings: Settings) -> None:
                 "params": {
                     "name": "schedule_notification",
                     "arguments": {
+                        "channel": "must-be-ignored",
                         "title": "Future reminder",
                         "message": "Sent by the gateway scheduler.",
                         "send_at": "2099-09-01T18:00:00+02:00",

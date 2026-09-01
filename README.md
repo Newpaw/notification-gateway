@@ -35,10 +35,11 @@ get arbitrary publish access.
 
 ## MCP tools
 
-- `schedule_notification`: persist a future notification in the gateway. The tool has no channel
-  parameter; every request is routed server-side through `DEFAULT_CHANNEL` to the `jan-personal`
+- `schedule_notification`: persist a future notification in the gateway. The tool requires no
+  channel parameter; every request is routed server-side through `DEFAULT_CHANNEL` to the `jan-personal`
   ntfy topic. `send_at` must be an ISO 8601 timestamp with a timezone offset, for example
-  `2026-09-02T07:30:00+02:00`.
+  `2026-09-02T07:30:00+02:00`. A legacy optional `channel` argument is accepted for connectors
+  with a cached pre-0.3.0 schema, but its value is always ignored.
 - `list_scheduled_notifications`: list pending, sent, failed, or cancelled notifications.
 - `cancel_scheduled_notification`: cancel a pending notification by ID.
 

@@ -98,7 +98,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             priority: Priority = Priority.DEFAULT,
             tags: list[str] | None = None,
             click_url: str | None = None,
+            channel: str | None = None,
         ) -> dict[str, object]:
+            # Backward compatibility for connector schemas cached before v0.3.0.
+            # The caller-supplied value is intentionally ignored.
+            del channel
             token = get_access_token()
             scheduled = await schedules.schedule(
                 ScheduleNotificationRequest(
