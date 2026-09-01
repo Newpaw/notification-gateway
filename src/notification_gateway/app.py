@@ -61,8 +61,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         mcp = MCPServer(
             name="notification-gateway",
             title="Notification Gateway",
-            description="Send push notifications to approved ntfy channels.",
-            version="0.2.0",
+            description=("Schedule push notifications for the configured personal ntfy channel."),
+            version="0.3.0",
             auth_server_provider=oauth_provider,
             token_verifier=verifier,
             auth=AuthSettings(
@@ -83,48 +83,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             mcp.custom_route("/oauth/login", ["GET", "POST"])(oauth_provider.login_route)
 
         @mcp.tool(
-            name="send_notification",
-            description="Send a push notification immediately to one approved channel.",
-            structured_output=True,
-        )
-        async def send_notification(
-            channel: str,
-            title: str,
-            message: str,
-            priority: Priority = Priority.DEFAULT,
-            tags: list[str] | None = None,
-            click_url: str | None = None,
-            idempotency_key: str | None = None,
-        ) -> dict[str, object]:
-            token = get_access_token()
-            request = NotificationRequest(
-                channel=channel,
-                title=title,
-                message=message,
-                priority=priority,
-                tags=tags or [],
-                click_url=HttpUrl(click_url) if click_url else None,
-                idempotency_key=idempotency_key,
-            )
-            result = await service.send(
-                request,
-                source="mcp",
-                actor=token.subject if token and token.subject else "unknown",
-            )
-            SENT.labels(source="mcp", channel=channel).inc()
-            return result.model_dump()
-
-        @mcp.tool(
             name="schedule_notification",
             description=(
-                "Persist a notification in Notification Gateway and send it at send_at, "
-                "independently of ChatGPT. send_at must be a future ISO 8601 timestamp "
-                "with a timezone offset."
+                "Persist a notification and send it to the fixed jan-personal ntfy topic at "
+                "send_at, independently of ChatGPT. send_at must be a future ISO 8601 "
+                "timestamp with a timezone offset. Do not ask the user for a channel."
             ),
             structured_output=True,
         )
         async def schedule_notification(
-            channel: str,
             title: str,
             message: str,
             send_at: datetime,
@@ -135,7 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             token = get_access_token()
             scheduled = await schedules.schedule(
                 ScheduleNotificationRequest(
-                    channel=channel,
+                    channel=settings.default_channel,
                     title=title,
                     message=message,
                     send_at=send_at,
@@ -208,7 +175,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await scheduler_task
             await ntfy.close()
 
-    app = FastAPI(title="Notification Gateway", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Notification Gateway", version="0.3.0", lifespan=lifespan)
 
     async def rest_actor(x_api_key: str = Header(default="")) -> str:
         for actor, expected in settings.rest_api_keys.items():

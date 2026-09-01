@@ -16,7 +16,7 @@ The included self-hosted authorization server supports authorization code flow w
 dynamic client registration, short-lived access tokens, rotating refresh tokens, and revocation.
 An external OIDC provider remains supported for multi-user installations.
 
-## Request
+## REST request
 
 ```json
 {
@@ -30,22 +30,23 @@ An external OIDC provider remains supported for multi-user installations.
 }
 ```
 
-Channels are aliases. Their private ntfy topics live only in `CHANNEL_TOPICS_JSON`, so callers do
-not get arbitrary publish access.
+REST channels are aliases. Their ntfy topics live only in `CHANNEL_TOPICS_JSON`, so callers do not
+get arbitrary publish access.
 
 ## MCP tools
 
-- `send_notification`: send immediately.
-- `schedule_notification`: persist a future notification in the gateway. `send_at` must be an
-  ISO 8601 timestamp with a timezone offset, for example `2026-09-02T07:30:00+02:00`.
+- `schedule_notification`: persist a future notification in the gateway. The tool has no channel
+  parameter; every request is routed server-side through `DEFAULT_CHANNEL` to the `jan-personal`
+  ntfy topic. `send_at` must be an ISO 8601 timestamp with a timezone offset, for example
+  `2026-09-02T07:30:00+02:00`.
 - `list_scheduled_notifications`: list pending, sent, failed, or cancelled notifications.
 - `cancel_scheduled_notification`: cancel a pending notification by ID.
 
 Scheduled notifications are owned by Notification Gateway, not by ChatGPT Scheduled Tasks. The
 background worker polls the persistent SQLite queue and sends due notifications even when ChatGPT
-is closed. Failed deliveries use exponential backoff and stop after five attempts. A restart safely
-recovers work that was claimed but not completed, and the notification ID is used as an idempotency
-key on delivery.
+is closed. ChatGPT cannot choose or override the destination channel. Failed deliveries use
+exponential backoff and stop after five attempts. A restart safely recovers work that was claimed
+but not completed, and the notification ID is used as an idempotency key on delivery.
 
 Example ChatGPT request:
 
@@ -82,6 +83,8 @@ Set these secrets in Komodo, never in the compose file:
 - `NTFY_TOKEN`: a dedicated ntfy access token. `NTFY_USERNAME`/`NTFY_PASSWORD` are supported as a
   migration fallback, but a revocable token is preferred.
 - `CHANNEL_TOPICS_JSON`: channel-to-private-topic map.
+- `DEFAULT_CHANNEL`: the only alias used by the MCP scheduler. For the personal deployment use
+  `personal`; configure `CHANNEL_TOPICS_JSON={"personal":"jan-personal"}`.
 - `REST_API_KEYS_JSON`: caller-to-key map; use long random values.
 
 The initial safe deployment uses `MCP_ENABLED=false`. REST and health checks work immediately.
@@ -112,7 +115,8 @@ access tokens expire after 15 minutes, refresh tokens rotate, and five failed lo
 that authorization request.
 
 Dynamic client registration is intentionally restricted to HTTPS callback URLs on `chatgpt.com`.
-The MCP tool can only publish to aliases present in `CHANNEL_TOPICS_JSON`.
+The MCP scheduler always publishes through `DEFAULT_CHANNEL`; the caller cannot supply a channel.
+The production personal mapping is `personal` to `jan-personal`.
 
 For a multi-user deployment, disable the bundled server and configure an external OIDC provider:
 

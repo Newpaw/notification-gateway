@@ -23,4 +23,13 @@ def test_self_hosted_oauth_requires_strong_password() -> None:
 
 def test_json_settings_are_parsed(settings: Settings) -> None:
     assert settings.channels["personal"] == "private-personal"
+    assert settings.default_channel == "personal"
     assert settings.rest_api_keys == {"tests": "test-secret"}
+
+
+def test_default_channel_must_be_configured() -> None:
+    with pytest.raises(ValidationError, match="DEFAULT_CHANNEL"):
+        Settings(
+            channel_topics_json='{"personal":"jan-personal"}',
+            default_channel="missing",
+        )

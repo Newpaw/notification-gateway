@@ -14,5 +14,6 @@ def settings(tmp_path: Path) -> Settings:
         ntfy_base_url="https://ntfy.example.test",
         public_base_url="https://notify.example.test",
         channel_topics_json='{"personal":"private-personal","urgent":"private-urgent"}',
+        default_channel="personal",
         rest_api_keys_json='{"tests":"test-secret"}',
     )

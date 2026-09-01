@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     ntfy_username: str = ""
     ntfy_password: str = ""
 
-    channel_topics_json: str = '{"personal":"personal","urgent":"urgent","system":"system"}'
+    channel_topics_json: str = '{"personal":"jan-personal"}'
+    default_channel: str = "personal"
     rest_api_keys_json: str = "{}"
 
     mcp_enabled: bool = False
@@ -35,7 +36,9 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
 
     @model_validator(mode="after")
-    def validate_oauth(self) -> Settings:
+    def validate_settings(self) -> Settings:
+        if self.default_channel not in self.channels:
+            raise ValueError("DEFAULT_CHANNEL must exist in CHANNEL_TOPICS_JSON")
         if self.mcp_enabled and self.oauth_self_hosted and len(self.oauth_login_password) < 20:
             raise ValueError("OAUTH_LOGIN_PASSWORD must be at least 20 characters")
         if self.mcp_enabled and not self.oauth_self_hosted and not self.oauth_issuer:
