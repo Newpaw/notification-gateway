@@ -7,6 +7,8 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://notify.novopacky.com}
       NTFY_BASE_URL: ${NTFY_BASE_URL:-http://ntfy:80}
       NTFY_TOKEN: ${NTFY_TOKEN}
+      NTFY_USERNAME: ${NTFY_USERNAME:-}
+      NTFY_PASSWORD: ${NTFY_PASSWORD:-}
       CHANNEL_TOPICS_JSON: ${CHANNEL_TOPICS_JSON}
       REST_API_KEYS_JSON: ${REST_API_KEYS_JSON}
       MCP_ENABLED: ${MCP_ENABLED:-false}
@@ -26,4 +28,3 @@ volumes:
 networks:
   cloudflare:
     external: true
-

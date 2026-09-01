@@ -59,7 +59,8 @@ and joins the existing external Docker network `cloudflare`. Point the Cloudflar
 
 Set these secrets in Komodo, never in the compose file:
 
-- `NTFY_TOKEN`: a dedicated ntfy access token allowed to publish only the mapped topics.
+- `NTFY_TOKEN`: a dedicated ntfy access token. `NTFY_USERNAME`/`NTFY_PASSWORD` are supported as a
+  migration fallback, but a revocable token is preferred.
 - `CHANNEL_TOPICS_JSON`: channel-to-private-topic map.
 - `REST_API_KEYS_JSON`: caller-to-key map; use long random values.
 
@@ -96,4 +97,3 @@ curl https://notify.novopacky.com/api/v1/notifications \
 GitHub Actions runs Ruff, mypy, pytest, and a Docker build for every change. Pushes to `main` and
 version tags publish signed, provenance-attested images to GHCR. Dependabot tracks Python, Docker,
 and Actions updates.
-
