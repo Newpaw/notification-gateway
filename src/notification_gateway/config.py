@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     rest_api_keys_json: str = "{}"
 
     mcp_enabled: bool = False
+    oauth_self_hosted: bool = False
+    oauth_login_password: str = ""
     oauth_issuer: HttpUrl | None = None
     oauth_audience: str = "notification-gateway"
     oauth_jwks_url: HttpUrl | None = None
@@ -34,7 +36,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_oauth(self) -> Settings:
-        if self.mcp_enabled and not self.oauth_issuer:
+        if self.mcp_enabled and self.oauth_self_hosted and len(self.oauth_login_password) < 20:
+            raise ValueError("OAUTH_LOGIN_PASSWORD must be at least 20 characters")
+        if self.mcp_enabled and not self.oauth_self_hosted and not self.oauth_issuer:
             raise ValueError("OAUTH_ISSUER is required when MCP_ENABLED=true")
         return self
 

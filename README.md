@@ -5,14 +5,15 @@ notifications through a self-hosted [ntfy](https://ntfy.sh/) server.
 
 ## Interfaces
 
-- MCP Streamable HTTP at `/mcp` for ChatGPT, protected by OAuth 2.1/OIDC and the
+- MCP Streamable HTTP at `/mcp` for ChatGPT, protected by OAuth 2.1 and the
   `notifications:write` scope.
 - REST `POST /api/v1/notifications` for monitoring and automations, protected by `X-API-Key`.
 - `/healthz`, `/readyz`, and Prometheus `/metrics` endpoints.
 - SQLite audit trail and idempotency keys to prevent duplicate pushes.
 
-MCP is deliberately disabled until a real identity provider is configured. The service does not
-implement its own authorization server.
+The included self-hosted authorization server supports authorization code flow with PKCE S256,
+dynamic client registration, short-lived access tokens, rotating refresh tokens, and revocation.
+An external OIDC provider remains supported for multi-user installations.
 
 ## Request
 
@@ -68,20 +69,45 @@ The initial safe deployment uses `MCP_ENABLED=false`. REST and health checks wor
 
 ## Enable ChatGPT MCP
 
-Configure an OAuth 2.1/OIDC provider that supports the MCP client registration flow, then set:
+For a personal ChatGPT connector, enable the bundled authorization server:
 
 ```dotenv
 PUBLIC_BASE_URL=https://notify.novopacky.com
 MCP_ENABLED=true
+OAUTH_SELF_HOSTED=true
+OAUTH_LOGIN_PASSWORD=replace-with-at-least-20-random-characters
+OAUTH_REQUIRED_SCOPES=notifications:write
+```
+
+Then create a custom connector in ChatGPT developer mode:
+
+- Name: `Notification Gateway`
+- Description: `Send push notifications to my phone through ntfy`
+- MCP server URL: `https://notify.novopacky.com/mcp`
+- Authentication: `OAuth`
+
+ChatGPT discovers the authorization and registration endpoints automatically. During connection,
+the gateway displays its own login page; enter `OAUTH_LOGIN_PASSWORD` there. The password is only
+used to approve new OAuth sessions. Tokens and authorization codes are stored in SQLite as hashes,
+access tokens expire after 15 minutes, refresh tokens rotate, and five failed login attempts lock
+that authorization request.
+
+Dynamic client registration is intentionally restricted to HTTPS callback URLs on `chatgpt.com`.
+The MCP tool can only publish to aliases present in `CHANNEL_TOPICS_JSON`.
+
+For a multi-user deployment, disable the bundled server and configure an external OIDC provider:
+
+```dotenv
+MCP_ENABLED=true
+OAUTH_SELF_HOSTED=false
 OAUTH_ISSUER=https://issuer.example.com/
 OAUTH_AUDIENCE=notification-gateway
 OAUTH_JWKS_URL=https://issuer.example.com/.well-known/jwks.json
 OAUTH_REQUIRED_SCOPES=notifications:write
 ```
 
-The MCP SDK publishes protected-resource metadata, challenges unauthenticated clients, validates
-JWT signature/issuer/audience/expiry, and enforces the required scope. In ChatGPT developer mode,
-add the connector URL `https://notify.novopacky.com/mcp` and complete its OAuth login.
+In either mode, the MCP SDK publishes protected-resource metadata, challenges unauthenticated
+clients, and enforces the required scope.
 
 ## REST example
 

@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from mcp.server.auth.middleware.auth_context import get_access_token
-from mcp.server.auth.settings import AuthSettings
+from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.mcpserver import MCPServer
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from pydantic import AnyHttpUrl, HttpUrl
@@ -17,6 +17,7 @@ from notification_gateway.config import Settings, get_settings
 from notification_gateway.database import Database
 from notification_gateway.models import NotificationRequest, NotificationResult, Priority
 from notification_gateway.ntfy import NtfyClient
+from notification_gateway.oauth_provider import SelfHostedOAuthProvider
 from notification_gateway.service import NotificationService, UnknownChannelError
 
 SENT = Counter("notification_gateway_sent_total", "Notifications sent", ["source", "channel"])
@@ -29,20 +30,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     service = NotificationService(settings.channels, database, ntfy)
 
     mcp_http = None
+    oauth_provider = None
     if settings.mcp_enabled:
-        verifier = OidcTokenVerifier(settings)
+        resource_url = f"{str(settings.public_base_url).rstrip('/')}/mcp"
+        if settings.oauth_self_hosted:
+            oauth_provider = SelfHostedOAuthProvider(
+                database_path=settings.database_path,
+                issuer=str(settings.public_base_url).rstrip("/"),
+                resource=resource_url,
+                login_password=settings.oauth_login_password,
+                required_scopes=settings.required_scopes,
+            )
+            verifier = None
+            issuer_url = AnyHttpUrl(str(settings.public_base_url).rstrip("/"))
+        else:
+            verifier = OidcTokenVerifier(settings)
+            issuer_url = AnyHttpUrl(str(settings.oauth_issuer))
         mcp = MCPServer(
             name="notification-gateway",
             title="Notification Gateway",
             description="Send push notifications to approved ntfy channels.",
             version="0.1.0",
+            auth_server_provider=oauth_provider,
             token_verifier=verifier,
             auth=AuthSettings(
-                issuer_url=AnyHttpUrl(str(settings.oauth_issuer)),
-                resource_server_url=AnyHttpUrl(f"{str(settings.public_base_url).rstrip('/')}/mcp"),
+                issuer_url=issuer_url,
+                resource_server_url=AnyHttpUrl(resource_url),
                 required_scopes=settings.required_scopes,
+                client_registration_options=ClientRegistrationOptions(
+                    enabled=settings.oauth_self_hosted,
+                    valid_scopes=settings.required_scopes,
+                    default_scopes=settings.required_scopes,
+                    client_secret_expiry_seconds=None,
+                ),
+                revocation_options=RevocationOptions(enabled=settings.oauth_self_hosted),
             ),
         )
+
+        if oauth_provider is not None:
+            mcp.custom_route("/oauth/login", ["GET", "POST"])(oauth_provider.login_route)
 
         @mcp.tool(
             name="send_notification",
@@ -81,6 +107,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await database.initialize()
+        if oauth_provider is not None:
+            await oauth_provider.initialize()
         if mcp_http is not None:
             async with mcp_http.router.lifespan_context(mcp_http):
                 yield
