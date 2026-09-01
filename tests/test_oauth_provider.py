@@ -171,7 +171,10 @@ async def test_login_route_renders_and_rejects_expired_transaction(
     assert b"Authorize MCP client" in response.body
     assert b"chatgpt-client" in response.body
     assert b"https://chatgpt.com/connector_platform_oauth_redirect" in response.body
-    assert response.headers["content-security-policy"].endswith("form-action 'self'")
+    content_security_policy = response.headers["content-security-policy"]
+    assert "form-action" not in content_security_policy
+    assert "base-uri 'none'" in content_security_policy
+    assert "frame-ancestors 'none'" in content_security_policy
 
     expired_scope = {**scope, "query_string": b"transaction=expired"}
     expired = await oauth_provider.login_route(Request(expired_scope))

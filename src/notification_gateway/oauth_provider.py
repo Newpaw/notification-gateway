@@ -419,7 +419,8 @@ autocomplete="current-password"></label>
             headers={
                 "Cache-Control": "no-store",
                 "Content-Security-Policy": (
-                    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'"
+                    "default-src 'none'; style-src 'unsafe-inline'; "
+                    "base-uri 'none'; frame-ancestors 'none'"
                 ),
                 "X-Frame-Options": "DENY",
             },
