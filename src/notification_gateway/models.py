@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
@@ -11,6 +12,14 @@ class Priority(StrEnum):
     DEFAULT = "default"
     HIGH = "high"
     MAX = "max"
+
+
+class ScheduledStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    SENT = "sent"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class NotificationRequest(BaseModel):
@@ -30,6 +39,17 @@ class NotificationRequest(BaseModel):
         return tags
 
 
+class ScheduleNotificationRequest(NotificationRequest):
+    send_at: datetime
+
+    @field_validator("send_at")
+    @classmethod
+    def validate_send_at(cls, send_at: datetime) -> datetime:
+        if send_at.tzinfo is None or send_at.utcoffset() is None:
+            raise ValueError("send_at must include a timezone offset")
+        return send_at.astimezone(UTC)
+
+
 class NotificationResult(BaseModel):
     id: str
     channel: str
@@ -37,3 +57,20 @@ class NotificationResult(BaseModel):
     ntfy_message_id: str | None = None
     duplicate: bool = False
     created_at: str
+
+
+class ScheduledNotification(BaseModel):
+    id: str
+    channel: str
+    title: str
+    message: str
+    priority: Priority
+    tags: list[str] = Field(default_factory=list)
+    click_url: HttpUrl | None = None
+    send_at: datetime
+    status: ScheduledStatus
+    attempts: int = 0
+    ntfy_message_id: str | None = None
+    last_error: str | None = None
+    created_at: datetime
+    sent_at: datetime | None = None

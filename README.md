@@ -9,7 +9,8 @@ notifications through a self-hosted [ntfy](https://ntfy.sh/) server.
   `notifications:write` scope.
 - REST `POST /api/v1/notifications` for monitoring and automations, protected by `X-API-Key`.
 - `/healthz`, `/readyz`, and Prometheus `/metrics` endpoints.
-- SQLite audit trail and idempotency keys to prevent duplicate pushes.
+- Persistent SQLite scheduler, audit trail, retries, and idempotency keys to prevent duplicate
+  pushes.
 
 The included self-hosted authorization server supports authorization code flow with PKCE S256,
 dynamic client registration, short-lived access tokens, rotating refresh tokens, and revocation.
@@ -31,6 +32,24 @@ An external OIDC provider remains supported for multi-user installations.
 
 Channels are aliases. Their private ntfy topics live only in `CHANNEL_TOPICS_JSON`, so callers do
 not get arbitrary publish access.
+
+## MCP tools
+
+- `send_notification`: send immediately.
+- `schedule_notification`: persist a future notification in the gateway. `send_at` must be an
+  ISO 8601 timestamp with a timezone offset, for example `2026-09-02T07:30:00+02:00`.
+- `list_scheduled_notifications`: list pending, sent, failed, or cancelled notifications.
+- `cancel_scheduled_notification`: cancel a pending notification by ID.
+
+Scheduled notifications are owned by Notification Gateway, not by ChatGPT Scheduled Tasks. The
+background worker polls the persistent SQLite queue and sends due notifications even when ChatGPT
+is closed. Failed deliveries use exponential backoff and stop after five attempts. A restart safely
+recovers work that was claimed but not completed, and the notification ID is used as an idempotency
+key on delivery.
+
+Example ChatGPT request:
+
+> Tomorrow at 7:30 Europe/Prague, schedule a personal notification reminding me to call Petr.
 
 ## Local development
 

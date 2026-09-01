@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -16,9 +18,16 @@ from starlette.responses import JSONResponse, Response
 from notification_gateway.auth import OidcTokenVerifier
 from notification_gateway.config import Settings, get_settings
 from notification_gateway.database import Database
-from notification_gateway.models import NotificationRequest, NotificationResult, Priority
+from notification_gateway.models import (
+    NotificationRequest,
+    NotificationResult,
+    Priority,
+    ScheduledStatus,
+    ScheduleNotificationRequest,
+)
 from notification_gateway.ntfy import NtfyClient
 from notification_gateway.oauth_provider import SelfHostedOAuthProvider
+from notification_gateway.scheduler import NotificationScheduler, ScheduleService
 from notification_gateway.service import NotificationService, UnknownChannelError
 
 SENT = Counter("notification_gateway_sent_total", "Notifications sent", ["source", "channel"])
@@ -29,6 +38,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     database = Database(settings.database_path)
     ntfy = NtfyClient(settings)
     service = NotificationService(settings.channels, database, ntfy)
+    schedules = ScheduleService(database, service)
+    scheduler = NotificationScheduler(database, service)
 
     mcp_http = None
     oauth_provider = None
@@ -51,7 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             name="notification-gateway",
             title="Notification Gateway",
             description="Send push notifications to approved ntfy channels.",
-            version="0.1.0",
+            version="0.2.0",
             auth_server_provider=oauth_provider,
             token_verifier=verifier,
             auth=AuthSettings(
@@ -73,7 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         @mcp.tool(
             name="send_notification",
-            description="Send a push notification to one approved channel.",
+            description="Send a push notification immediately to one approved channel.",
             structured_output=True,
         )
         async def send_notification(
@@ -103,6 +114,69 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             SENT.labels(source="mcp", channel=channel).inc()
             return result.model_dump()
 
+        @mcp.tool(
+            name="schedule_notification",
+            description=(
+                "Persist a notification in Notification Gateway and send it at send_at, "
+                "independently of ChatGPT. send_at must be a future ISO 8601 timestamp "
+                "with a timezone offset."
+            ),
+            structured_output=True,
+        )
+        async def schedule_notification(
+            channel: str,
+            title: str,
+            message: str,
+            send_at: datetime,
+            priority: Priority = Priority.DEFAULT,
+            tags: list[str] | None = None,
+            click_url: str | None = None,
+        ) -> dict[str, object]:
+            token = get_access_token()
+            scheduled = await schedules.schedule(
+                ScheduleNotificationRequest(
+                    channel=channel,
+                    title=title,
+                    message=message,
+                    send_at=send_at,
+                    priority=priority,
+                    tags=tags or [],
+                    click_url=HttpUrl(click_url) if click_url else None,
+                ),
+                actor=token.subject if token and token.subject else "unknown",
+            )
+            return scheduled.model_dump(mode="json")
+
+        @mcp.tool(
+            name="list_scheduled_notifications",
+            description="List notifications persisted in Notification Gateway for this user.",
+            structured_output=True,
+        )
+        async def list_scheduled_notifications(
+            status: ScheduledStatus | None = None,
+            limit: int = 20,
+        ) -> dict[str, object]:
+            token = get_access_token()
+            actor = token.subject if token and token.subject else "unknown"
+            bounded_limit = max(1, min(limit, 100))
+            scheduled = await schedules.list(
+                actor=actor,
+                status=status,
+                limit=bounded_limit,
+            )
+            return {"notifications": [item.model_dump(mode="json") for item in scheduled]}
+
+        @mcp.tool(
+            name="cancel_scheduled_notification",
+            description="Cancel one pending notification by its Notification Gateway ID.",
+            structured_output=True,
+        )
+        async def cancel_scheduled_notification(notification_id: str) -> dict[str, object]:
+            token = get_access_token()
+            actor = token.subject if token and token.subject else "unknown"
+            cancelled = await schedules.cancel(notification_id, actor=actor)
+            return {"id": notification_id, "cancelled": cancelled}
+
         public_host = settings.public_base_url.host
         if public_host is None:
             raise ValueError("PUBLIC_BASE_URL must include a hostname")
@@ -122,14 +196,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await database.initialize()
         if oauth_provider is not None:
             await oauth_provider.initialize()
-        if mcp_http is not None:
-            async with mcp_http.router.lifespan_context(mcp_http):
+        scheduler_task = asyncio.create_task(scheduler.run(), name="notification-scheduler")
+        try:
+            if mcp_http is not None:
+                async with mcp_http.router.lifespan_context(mcp_http):
+                    yield
+            else:
                 yield
-        else:
-            yield
-        await ntfy.close()
+        finally:
+            scheduler.stop()
+            await scheduler_task
+            await ntfy.close()
 
-    app = FastAPI(title="Notification Gateway", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Notification Gateway", version="0.2.0", lifespan=lifespan)
 
     async def rest_actor(x_api_key: str = Header(default="")) -> str:
         for actor, expected in settings.rest_api_keys.items():

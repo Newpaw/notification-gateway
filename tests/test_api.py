@@ -149,6 +149,37 @@ def test_complete_oauth_and_authenticated_mcp_flow(settings: Settings) -> None:
             headers=mcp_headers,
             json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
         )
+        schedule = client.post(
+            "/mcp",
+            headers=mcp_headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "schedule_notification",
+                    "arguments": {
+                        "channel": "personal",
+                        "title": "Future reminder",
+                        "message": "Sent by the gateway scheduler.",
+                        "send_at": "2099-09-01T18:00:00+02:00",
+                    },
+                },
+            },
+        )
+        scheduled_list = client.post(
+            "/mcp",
+            headers=mcp_headers,
+            json={
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {
+                    "name": "list_scheduled_notifications",
+                    "arguments": {"status": "pending"},
+                },
+            },
+        )
 
     assert registration.status_code == 201
     assert login.status_code == 303
@@ -156,3 +187,10 @@ def test_complete_oauth_and_authenticated_mcp_flow(settings: Settings) -> None:
     assert initialize.status_code == 200
     assert tools.status_code == 200
     assert "send_notification" in tools.text
+    assert "schedule_notification" in tools.text
+    assert "list_scheduled_notifications" in tools.text
+    assert "cancel_scheduled_notification" in tools.text
+    assert schedule.status_code == 200
+    assert '"status":"pending"' in schedule.text
+    assert scheduled_list.status_code == 200
+    assert "Future reminder" in scheduled_list.text
