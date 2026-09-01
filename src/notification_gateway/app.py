@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from pydantic import AnyHttpUrl, HttpUrl
 from starlette.responses import JSONResponse, Response
@@ -102,7 +103,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             SENT.labels(source="mcp", channel=channel).inc()
             return result.model_dump()
 
-        mcp_http = mcp.streamable_http_app(streamable_http_path="/mcp", stateless_http=True)
+        public_host = settings.public_base_url.host
+        if public_host is None:
+            raise ValueError("PUBLIC_BASE_URL must include a hostname")
+        public_origin = str(settings.public_base_url).rstrip("/")
+        mcp_http = mcp.streamable_http_app(
+            streamable_http_path="/mcp",
+            stateless_http=True,
+            transport_security=TransportSecuritySettings(
+                enable_dns_rebinding_protection=True,
+                allowed_hosts=[public_host, f"{public_host}:*"],
+                allowed_origins=[public_origin, "https://chatgpt.com"],
+            ),
+        )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
