@@ -146,6 +146,7 @@ async def test_login_route_renders_and_rejects_expired_transaction(
     response = await oauth_provider.login_route(Request(scope))
     assert response.status_code == 200
     assert b"Authorize ChatGPT" in response.body
+    assert "https://chatgpt.com" in response.headers["content-security-policy"]
 
     expired_scope = {**scope, "query_string": b"transaction=expired"}
     expired = await oauth_provider.login_route(Request(expired_scope))

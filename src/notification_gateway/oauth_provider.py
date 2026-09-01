@@ -359,7 +359,7 @@ class SelfHostedOAuthProvider(
                 )
                 return RedirectResponse(
                     redirect_url,
-                    status_code=302,
+                    status_code=303,
                     headers={"Cache-Control": "no-store"},
                 )
             except (PermissionError, ValueError) as exc:
@@ -393,7 +393,8 @@ autocomplete="current-password"></label>
             headers={
                 "Cache-Control": "no-store",
                 "Content-Security-Policy": (
-                    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'"
+                    "default-src 'none'; style-src 'unsafe-inline'; "
+                    "form-action 'self' https://chatgpt.com"
                 ),
                 "X-Frame-Options": "DENY",
             },
